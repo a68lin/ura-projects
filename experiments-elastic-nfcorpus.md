@@ -15,17 +15,27 @@ Instead, really try to understand what's going on.
 
 ## Install Elasticsearch
 
-What is Elasticsearch? Elasticsearch provides a distributed document store and searching APIs. Instead of storing information as rows of columnar data, Elasticsearch stores complex data structures that have been serialized as JSON documents. Elasticsearch also uses inverted index, which is introduced in previous guides, to store documents. In this guide, we will set up an Elasticsearch server locally on your computer and perform vector searching on NFCorpus using Elasticsearch. 
+What is Elasticsearch? Elasticsearch provides a distributed document store and searching APIs. Instead of storing information as rows of columnar data, Elasticsearch stores complex data structures that have been serialized as json documents. Elasticsearch also uses inverted index, which is introduced in previous guides, to store documents. In this guide, we will set up an Elasticsearch service locally on your computer and perform vector searching on NFCorpus using Elasticsearch kNN searching API. 
 
 Download Elasticsearch and go to the elasticsearch directory:
 
-macOS:
+1. macOS:
 ```bash
 curl -O https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-8.13.2-darwin-x86_64.tar.gz
 curl https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-8.13.2-darwin-x86_64.tar.gz.sha512 | shasum -a 512 -c - 
 tar -xzf elasticsearch-8.13.2-darwin-x86_64.tar.gz
 cd elasticsearch-8.13.2/ 
 ```
+2. Linux:
+```bash
+wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-8.13.2-linux-x86_64.tar.gz
+wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-8.13.2-linux-x86_64.tar.gz.sha512
+shasum -a 512 -c elasticsearch-8.13.2-linux-x86_64.tar.gz.sha512 
+tar -xzf elasticsearch-8.13.2-linux-x86_64.tar.gz
+cd elasticsearch-8.13.2/
+```
+3. Windows:
+[windows installation instructions](https://www.elastic.co/guide/en/elasticsearch/reference/current/zip-windows.html)
 
 Start Elasticsearch service:
 ```bash
@@ -107,9 +117,9 @@ Now your elasticsearch service should be running and ready to be connected!
 
 First, we need to set up an environment for clients to connect to the server. 
 
-We will download some starter code from: [elasticsearch-lab](https://github.com/elastic/elasticsearch-labs/raw/main/example-apps/search-tutorial/search-tutorial-starter.zip). Note that this guide will not directly use the code downloaded but instead using an interactive python shell to go through every step from indexing to retrieval.
+We will download some starter code from: [elasticsearch-lab](https://github.com/elastic/elasticsearch-labs/raw/main/example-apps/search-tutorial/search-tutorial-starter.zip). Note that this guide will not directly use the code downloaded but instead using an interactive Python shell to go through every step from indexing to retrieval.
 
-Extract the contents from the downloaded .zip file, cd to the search-tutorial directory, this directory will be our main working directory. 
+Extract the contents from the downloaded .zip file, cd to the `search-tutorial` directory, this directory will be our main working directory. 
 ```bash
 cd search-tutorial
 ```
@@ -120,12 +130,12 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-Install all the required python packages:
+Install all the required Python packages:
 ```bash
 pip install -r requirements.txt
 ```
 
-Install Elasticsearch and SentenceTransformers python modules and update the requirements.txt to keep it aligned with your current module versions:
+Install Elasticsearch and SentenceTransformers Python modules and update the requirements.txt to keep it aligned with your current module versions:
 ```bash
 pip install elasticsearch
 pip install sentence-transformers
@@ -135,7 +145,7 @@ SentenceTransformers framework is used to generate vectors(embeddings) using pre
 
 Now it's time to launch an interactive Python shell. 
 
-To setup the connection:
+To set up a connection to the Elasticsearch service:
 ```python
 from elasticsearch import Elasticsearch
 from pprint import pprint
@@ -212,9 +222,9 @@ es.indices.create(index='nfcorpus_documents', mappings={
             }
         })
 ```
-The first `delete` call is to delete any existing `nfcorpus_documents` index. The `create` call is to initialize an index in Elasticsearch. An index in Elasticsearch contains a mapping which stores all fields that each document has. The `mappings` option in `create` is to explicitly add a vector field in the index, which is latter used in the kNN vector searching. In the `embedding` property, we use `dense_vector` and `dot_product`. The `dense_vector` vector type is to support fast kNN search, there are also other types of vectors like `sparse_vector`. `dot_product` specifies that dot products of document vectors and query vectors will be used for comparison. 
+The first `delete` call is to delete any existing `nfcorpus_documents` index. The `create` call is to initialize an index in Elasticsearch. An index in Elasticsearch contains a mapping which stores all fields that each document has. The `mappings` option in `create` is to explicitly add a vector field in the index, which is later used in the kNN vector searching. In the `embedding` property, we use `dense_vector` and `dot_product`. The `dense_vector` vector type is to support fast kNN search, there are also other types of vectors like `sparse_vector`. `dot_product` specifies that dot products of document vectors and query vectors will be used for comparison. 
 
-Then we will insert NFCorpus documents to the index we just created:
+Then we will insert NFCorpus documents into the index we just created:
 ```python
 with open('collections/nfcorpus/corpus.json', 'rt') as f:
     documents = json.loads(f.read())
@@ -229,7 +239,7 @@ for document in documents:
 
 es.bulk(operations=operations)
 ```
-We first load the documents in `corpus.json`. `operations` is a list storing all the operations we want to perform at once using `bulk()`. The first `append` defines an insertion of a document to the index 'nfcorpus_documents'. The second `append` is to add a document and the generated vector using `all-MiniLM-L6-v2` model we loaded before. There is an `insert_document` API in Elasticsearch so we can add documents one by one easily but we use `bulk()` instead because performing all insertions at once is more efficient and faster. 
+We first load the documents in `corpus.json`. `operations` is a list storing all the operations we want to perform at once using `bulk()`. The first `append` defines an insertion of a document to the index `nfcorpus_documents`. The second `append` is to add a document and the generated vector using `all-MiniLM-L6-v2` model we loaded before. There is an `insert_document` API in Elasticsearch so we can add documents one by one easily but we use `bulk()` instead because performing all insertions at once is more efficient and faster. 
 
 Now the NFCorpus has been indexed. 
 
