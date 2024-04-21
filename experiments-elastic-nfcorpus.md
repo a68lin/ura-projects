@@ -18,7 +18,7 @@ For this guide, assume that we've already got trained encoders.
 
 + (TBA)
 
-## Install Elasticsearch (Now for MacOS only)
+## Install Elasticsearch (MacOS)
 
 Download Elasticsearch:
 ```bash
@@ -28,38 +28,34 @@ tar -xzf elasticsearch-8.13.2-darwin-x86_64.tar.gz
 cd elasticsearch-8.13.2/ 
 ```
 
-Change security configuration of config/elasticsearch.yml as below: (this changes disable security check when connect to Elasticsearch service)
-```bash
-# Enable security features
-xpack.security.enabled: false
-
-xpack.security.enrollment.enabled: false
-
-# Enable encryption for HTTP API client connections, such as Kibana, Logstash, and Agents
-xpack.security.http.ssl:
-  enabled: false
-  keystore.path: certs/http.p12
-
-# Enable encryption and mutual authentication between cluster nodes
-xpack.security.transport.ssl:
-  enabled: false
-  verification_mode: certificate
-  keystore.path: certs/transport.p12
-  truststore.path: certs/transport.p12
-```
 Run Elasticsearch:
 ```bash
 ./bin/elasticsearch
 ```
-Password will be genereted if the build is successfull, copy the password and set it and the current directory as environment variables:
+
+A password will be genereted as below if the build is successfull, copy the password.
 ```bash
-export ELASTIC_PASSWORD="your_password"
-export ES_HOME="your_elasticsearch_directory_location"
+✅ Elasticsearch security features have been automatically configured!
+✅ Authentication is enabled and cluster connections are encrypted.
+
+ℹ️  Password for the elastic user (reset with `bin/elasticsearch-reset-password -u elastic`):
+  'password'
+
+ℹ️  HTTP CA certificate SHA-256 fingerprint:
+  'fingerprint'
 ```
+
+Open another terminal, cd to the elasticsearch directory. and set two new environment variables:
+```bash
+export ELASTIC_PASSWORD="your_password" #replace it with your actual passwrod
+export ES_HOME="path_to_elasticsearch"
+```
+
 Check that Elasticsearch is running:
 ```bash
 curl --cacert $ES_HOME/config/certs/http_ca.crt -u elastic:$ELASTIC_PASSWORD https://localhost:9200 
 ```
+
 You should see a result like this:
 ```bash
 {
@@ -80,70 +76,72 @@ You should see a result like this:
   "tagline" : "You Know, for Search"
 }
 ```
-## Install Python dependency
+
+Now we need to exit the Elasticsearch server and change its security configuration in config/elasticsearch.yml as below. 
+```bash
+# Enable security features
+xpack.security.enabled: false
+
+xpack.security.enrollment.enabled: false
+
+# Enable encryption for HTTP API client connections, such as Kibana, Logstash, and Agents
+xpack.security.http.ssl:
+  enabled: false
+  keystore.path: certs/http.p12
+
+# Enable encryption and mutual authentication between cluster nodes
+xpack.security.transport.ssl:
+  enabled: false
+  verification_mode: certificate
+  keystore.path: certs/transport.p12
+  truststore.path: certs/transport.p12
+```
+This change disables security checks when connecting to Elasticsearch server from clients to help us avoid permission errors. In real-world productions, it is a better idea to keep the security features to protect the server and the data. 
+
+Now restart the Elasticserver again:
+```bash
+./bin/elasticsearch
+```
+
+## Set up a client connection to Elasticsearch:
+
+Now your elasticsearch service should be up and running! Then we will setup an environment for clients to connect to the server. 
+
+We will download some starter code from [elasticsearch-lab](https://github.com/elastic/elasticsearch-labs/raw/main/example-apps/search-tutorial/search-tutorial-starter.zip), this guide will not directly use the code downloaded but instead using interactive python shell to go through every step from indexing to retrieval for NFCorpus. (Throughout this guide, if you exit the python shell, you need to run all the previous code again. Open up new terminals to avoid exiting the shell if you need to do something else)
+
+After downloading, extract the contents from .zip file, cd to the search-tutorial directory, this directory will be our main working directory. 
+```bash
+cd search-tutorial
+```
 
 Create a virtual environment and activate it:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 ```
+
 Install all the required python packages:
 ```bash
 pip install -r requirements.txt
 ```
-Install Elasticsearch and SentenceTransformers python module, update the requirements.txt to keep it align with your current module versions:
+
+Install Elasticsearch and SentenceTransformers python modules, update the requirements.txt to keep it align with your current module versions:
 ```bash
 pip install elasticsearch
 pip install sentence-transformers
 pip freeze > requirements.txt
 ```
-SentenceTransformers framework is used to generate vectors(embeddings) using pretrained models, in thie guide, we will be using a model called all-MiniLM-L6-v2. 
+SentenceTransformers framework is used to generate vectors(embeddings) using pre-trained models, in thie guide, we will be using a model called all-MiniLM-L6-v2. 
 
-## Data Prep
+Now it's time to open up an interactive Python shell
 
-In this lesson, we'll be working with [NFCorpus](https://www.cl.uni-heidelberg.de/statnlpgroup/nfcorpus/), a full-text learning to rank dataset for medical information retrieval.
-The rationale is that the corpus is quite small &mdash; only 3633 documents &mdash; so the latency of CPU-based inference with neural models (i.e., the encoders) is tolerable, i.e., this lesson is doable on a laptop.
-
-Let's first start by fetching the data:
-
-```bash
-wget https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/nfcorpus.zip -P collections
-unzip collections/nfcorpus.zip -d collections
-```
-
-We need to do a bit of data munging to get the corpus into the right format (from jsonl to json). Additionally, because Field '_id' and 'metedata' are metadata fields and cannot be added inside a document in Elasticsearch, we need to change these two fields' names. 
-Open a Python shell and run the following code:
-
+To setup the connection:
 ```python
-import json
-
-with open('collections/fcorpus/corpus.json', 'w') as out:
-    with open('collections/nfcorpus/corpus.jsonl', 'r') as f:
-        jsonl_data = [json.loads(line.strip()) for line in f]
-    for obj in jsonl_data:
-        obj["id"] = obj.pop("_id")
-        obj["data"] = obj.pop("metadata")
-    out.dump(jsonl_data, f, indent=4)
-```
-Okay, the data are ready now.
-
-## Set up a client connection to Elasticsearch:
-
-Now your Elasticsearch service should be up and running.
-
-To setup the connection, we can have a look at search.py in the current directory:
-```python
-class Search:
-def __init__(self):
-    self.model = SentenceTransformer('all-MiniLM-L6-v2')
-    self.es = Elasticsearch('http://localhost:9200')
-    client_info = self.es.info()
-    print('Connected to Elasticsearch!')
-    pprint(client_info.body)
-```
-To initialize a client, run the code in the python shell:
-```python
-es = Search()
+from elasticsearch import Elasticsearch
+from pprint import pprint
+es = Elasticsearch('http://localhost:9200')
+client_info = es.info()
+pprint(client_info.body)
 ```
 
 You should see a message like this:
@@ -163,47 +161,81 @@ Connected to Elasticsearch!
              'minimum_wire_compatibility_version': '7.17.0',
              'number': '8.13.0'}}
 ```
-Now you have connected to your running Elasticsearch service.
+
+Now you have setup a client which is connected to your running Elasticsearch service.
+
+## Data Prep
+
+To work with [NFCorpus](https://www.cl.uni-heidelberg.de/statnlpgroup/nfcorpus/), you can download it again in the search-tutorial directory or copy the existing one from previous guides. 
+
+To download NFCorpus, go to the search-tutorial directory: 
+```bash
+wget https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/nfcorpus.zip -P collections
+unzip collections/nfcorpus.zip -d collections
+```
+
+We need to convert the corpus from jsonl to json. Additionally, because Field '_id' and 'metedata' are special fields which cannot be added inside a document in Elasticsearch, we need to change these two fields' names. In the Python shell, run the following code:
+
+```python
+import json
+with open('collections/nfcorpus/corpus.json', 'w') as out:
+    with open('collections/nfcorpus/corpus.jsonl', 'r') as f:
+        jsonl_data = [json.loads(line.strip()) for line in f]
+    for obj in jsonl_data:
+        obj["id"] = obj.pop("_id")
+        obj["data"] = obj.pop("metadata")
+    json.dump(jsonl_data, out, indent=4)
+```
+Okay, the data are ready now.
 
 ## Indexing
 
 We can now "index" these documents:
 
+First, we need to load the pretrained model:
 ```python
-es.reindex(collections/nfcorpus/nfcorpus.json)
+from sentence_transformers import SentenceTransformer
+model = SentenceTransformer('all-MiniLM-L6-v2')
 ```
 
-we can see the source code of reindex in search.py:
+In Elasticsearch, in order to create an index:
 ```python
-def reindex(self):
-    self.create_index()
-    with open('nfcorpus/corpus.json', 'rt') as f:
-        documents = json.loads(f.read())
-    return self.insert_documents(documents)
-```
-
-And source code of insert_documents:
-```python
-def insert_documents(self, documents):
-    operations = []
-    for document in documents:
-        operations.append({'index': {'_index': 'my_documents'}})
-        operations.append({
-            **document,
-            'embedding': self.get_embedding(document['title']),
+es.indices.create(index='my_documents', mappings={
+            'properties': {
+                'embedding': {
+                    'type': 'dense_vector',
+                    'similarity': 'dot_product',
+                }
+            }
         })
-    return self.es.bulk(operations=operations)
 ```
+
+Then we will insert NFCorpus to the index structure in Elasticsearch:
+
+```python
+with open('collections/nfcorpus/corpus.json', 'rt') as f:
+    documents = json.loads(f.read())
+operations = []
+for document in documents:
+    operations.append({'index': {'_index': 'my_documents'}})
+    operations.append({
+        **document,
+        'embedding': model.encode(document['title']),
+    })
+es.bulk(operations=operations)
+```
+
+A document after inserted:
+```bash
+{'index': {'_index': 'my_documents', '_id': '6rVe_44BZpkgJxnsW0xf', '_version': 1, 'result': 'created', '_shards': {'total': 2, 'successful': 1, 'failed': 0}, '_seq_no': 0, '_primary_term': 1, 'status': 201}}
+```
+
 Now the NFCorpus has been indexed. 
 
 ## Retrieval
 
 We can now perform retrieval by Elasticsearch, run following code in the shell:
 
-We first load the pretrained model:
-```python
-model = SentenceTransformer('all-MiniLM-L6-v2')
-```
 Then we can perform knn search:
 ```python
 results = es.search(
