@@ -168,13 +168,15 @@ Now you have setup a client which is connected to your running Elasticsearch ser
 
 To work with [NFCorpus](https://www.cl.uni-heidelberg.de/statnlpgroup/nfcorpus/), you can download it again in the search-tutorial directory or copy the existing one from previous guides. 
 
-To download NFCorpus, go to the search-tutorial directory: 
+To download NFCorpus, open up a new terminal and go to the search-tutorial directory: 
 ```bash
 wget https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/nfcorpus.zip -P collections
 unzip collections/nfcorpus.zip -d collections
 ```
 
-We need to convert the corpus from jsonl to json. Additionally, because Field '_id' and 'metedata' are special fields which cannot be added inside a document in Elasticsearch, we need to change these two fields' names. In the Python shell, run the following code:
+We need to convert the corpus from jsonl to json. Additionally, because Field '_id' and 'metedata' are special fields which cannot be added inside a document in Elasticsearch, we need to change these two fields' names. 
+
+In the previous running Python shell, run the following code:
 
 ```python
 import json
@@ -200,6 +202,7 @@ model = SentenceTransformer('all-MiniLM-L6-v2')
 
 In Elasticsearch, in order to create an index:
 ```python
+es.indices.delete(index='my_documents', ignore_unavailable=True)
 es.indices.create(index='my_documents', mappings={
             'properties': {
                 'embedding': {
@@ -215,6 +218,7 @@ Then we will insert NFCorpus to the index structure in Elasticsearch:
 ```python
 with open('collections/nfcorpus/corpus.json', 'rt') as f:
     documents = json.loads(f.read())
+
 operations = []
 for document in documents:
     operations.append({'index': {'_index': 'my_documents'}})
@@ -222,6 +226,7 @@ for document in documents:
         **document,
         'embedding': model.encode(document['title']),
     })
+
 es.bulk(operations=operations)
 ```
 
